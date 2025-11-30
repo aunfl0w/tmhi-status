@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TMHI 24hour Signal History</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+        .container {
+            width: 100%;
+            height: 100vh;
+            max-height: calc(100vh - 40px);
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        h1 {
+            margin: 0 0 20px 0;
+            text-align: center;
+            color: #333;
+            font-size: 24px;
+        }
+        .chart-container {
+            width: 100%;
+            height: calc(100% - 60px);
+            position: relative;
+        }
+        .loading {
+            text-align: center;
+            padding: 50px;
+            color: #666;
+        }
+        .error {
+            text-align: center;
+            padding: 50px;
+            color: #d32f2f;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>TMHI 24hour Signal History</h1>
+        <div id="loading" class="loading">Loading signal data...</div>
+        <div id="error" class="error" style="display: none;">Error loading data</div>
+        <div class="chart-container">
+            <canvas id="signalChart" style="display: none;"></canvas>
+        </div>
+    </div>
+
+    <script>
+        async function loadSignalData() {
+            try {
+                const response = await fetch('/api/updates');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                console.log('Received data:', data); // Debug log
+                return data;
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                throw error;
+            }
+        }
+
+        function createChart(data) {
+            // Sort data by date to ensure proper chronological order
+            data.sort((a, b) => new Date(a.date) - new Date(b.date));
+            
+            // Extract all signal metrics and dates
+            const signalBars = data.map(item => item.signal['5g'].bars);
+            const rsrq = data.map(item => item.signal['5g'].rsrq);
+            const rsrp = data.map(item => item.signal['5g'].rsrp);
+            const rssi = data.map(item => item.signal['5g'].rssi);
+            const sinr = data.map(item => item.signal['5g'].sinr);
+            const dates = data.map(item => {
+                // Ensure proper date parsing for RFC3339 format
+                const dateStr = item.date;
+                const parsedDate = new Date(dateStr);
+                if (isNaN(parsedDate.getTime())) {
+                    console.error('Invalid date:', dateStr);
+                    return new Date(); // Fallback to current date
+                }
+                return parsedDate;
+            });
+            
+            console.log('Parsed dates:', dates); // Debug log
+            
+            const ctx = document.getElementById('signalChart').getContext('2d');
+            
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Signal Bars',
+                        data: signalBars,
+                        borderColor: 'rgb(75, 192, 192)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                        borderWidth: 2,
+                        fill: false,
+                        tension: 0.1,
+                        pointRadius: 2,
+                        yAxisID: 'y'
+                    }, {
+                        label: 'Reference Signal Quality (RSRQ)',
+                        data: rsrq,
+                        borderColor: 'rgb(255, 99, 132)',
+                        backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                        borderWidth: 2,
+                        fill: false,
+                        tension: 0.1,
+                        pointRadius: 2,
+                        yAxisID: 'y1'
+                    }, {
+                        label: 'Reference Receive Power (RSRP)',
+                        data: rsrp,
+                        borderColor: 'rgb(54, 162, 235)',
+                        backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                        borderWidth: 2,
+                        fill: false,
+                        tension: 0.1,
+                        pointRadius: 2,
+                        yAxisID: 'y1'
+                    }, {
+                        label: 'Reference Signal Strength (RSSI)',
+                        data: rssi,
+                        borderColor: 'rgb(255, 205, 86)',
+                        backgroundColor: 'rgba(255, 205, 86, 0.1)',
+                        borderWidth: 2,
+                        fill: false,
+                        tension: 0.1,
+                        pointRadius: 2,
+                        yAxisID: 'y1'
+                    }, {
+                        label: 'Signal to Noise Ratio (SINR)',
+                        data: sinr,
+                        borderColor: 'rgb(153, 102, 255)',
+                        backgroundColor: 'rgba(153, 102, 255, 0.1)',
+                        borderWidth: 2,
+                        fill: false,
+                        tension: 0.1,
+                        pointRadius: 2,
+                        yAxisID: 'y2'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                title: function(tooltipItems) {
+                                    // Get the raw data point
+                                    const dataIndex = tooltipItems[0].dataIndex;
+                                    const rawDate = data[dataIndex].date;
+                                    const date = new Date(rawDate);
+                                    return date.toLocaleString();
+                                },
+                                label: function(context) {
+                                    const label = context.dataset.label || '';
+                                    if (label.includes('Signal Bars')) {
+                                        return `${label}: ${context.parsed.y}`;
+                                    } else if (label.includes('RSRQ')) {
+                                        return `${label}: ${context.parsed.y} dB`;
+                                    } else if (label.includes('RSRP') || label.includes('RSSI')) {
+                                        return `${label}: ${context.parsed.y} dBm`;
+                                    } else if (label.includes('SINR')) {
+                                        return `${label}: ${context.parsed.y} dB`;
+                                    }
+                                    return `${label}: ${context.parsed.y}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'hour',
+                                displayFormats: {
+                                    hour: 'MMM dd HH:mm'
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            },
+                            grid: {
+                                display: true,
+                                color: 'rgba(0,0,0,0.1)'
+                            }
+                        },
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Signal Bars'
+                            },
+                            min: 0,
+                            max: 5,
+                            ticks: {
+                                stepSize: 1
+                            },
+                            grid: {
+                                display: true,
+                                color: 'rgba(75, 192, 192, 0.2)'
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'Power/Quality (dBm/dB)'
+                            },
+                            grid: {
+                                drawOnChartArea: false,
+                                color: 'rgba(255, 99, 132, 0.2)'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return value + ' dB';
+                                }
+                            }
+                        },
+                        y2: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            min:0,
+                            max:30,
+                            title: {
+                                display: true,
+                                text: 'SINR'
+                            },
+                            grid: {
+                                drawOnChartArea: false,
+                            }
+                        }
+                    },
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    hover: {
+                        mode: 'nearest',
+                        intersect: false
+                    }
+                }
+            });
+        }
+
+        async function init() {
+            const loadingElement = document.getElementById('loading');
+            const errorElement = document.getElementById('error');
+            const chartElement = document.getElementById('signalChart');
+
+            try {
+                const data = await loadSignalData();
+                
+                if (!data || data.length === 0) {
+                    throw new Error('No data available');
+                }
+
+                // Hide loading, show chart
+                loadingElement.style.display = 'none';
+                chartElement.style.display = 'block';
+                
+                createChart(data);
+                
+                // Auto-refresh every 61 seconds
+                setInterval(async () => {
+                    try {
+                        const newData = await loadSignalData();
+                        if (newData && newData.length > 0) {
+                            // Recreate chart with new data
+                            const canvas = document.getElementById('signalChart');
+                            const newCanvas = document.createElement('canvas');
+                            newCanvas.id = 'signalChart';
+                            canvas.parentNode.replaceChild(newCanvas, canvas);
+                            createChart(newData);
+                        }
+                    } catch (error) {
+                        console.error('Error refreshing data:', error);
+                    }
+                }, 61 * 1000); // 61 seconds
+                
+            } catch (error) {
+                console.error('Error initializing chart:', error);
+                loadingElement.style.display = 'none';
+                errorElement.style.display = 'block';
+                errorElement.textContent = `Error loading data: ${error.message}`;
+            }
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
