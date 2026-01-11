@@ -72,7 +72,9 @@
             }
         }
 
-        function createChart(data) {
+        let chart = null; // Global chart reference
+        
+        function processData(data) {
             // Sort data by date to ensure proper chronological order
             data.sort((a, b) => new Date(a.date) - new Date(b.date));
             
@@ -93,63 +95,68 @@
                 return parsedDate;
             });
             
-            console.log('Parsed dates:', dates); // Debug log
+            return { signalBars, rsrq, rsrp, rssi, sinr, dates, data };
+        }
+
+        function createChart(data) {
+            const processedData = processData(data);
+            console.log('Parsed dates:', processedData.dates); // Debug log
             
             const ctx = document.getElementById('signalChart').getContext('2d');
             
-            new Chart(ctx, {
+            chart = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: dates,
+                    labels: processedData.dates,
                     datasets: [{
                         label: 'Signal Bars',
-                        data: signalBars,
+                        data: processedData.signalBars,
                         borderColor: 'rgb(75, 192, 192)',
                         backgroundColor: 'rgba(75, 192, 192, 0.1)',
                         borderWidth: 2,
                         fill: false,
-                        tension: 0.1,
-                        pointRadius: 2,
+                        tension: 0.5,
+                        pointRadius: 1,
                         yAxisID: 'y'
                     }, {
                         label: 'Reference Signal Quality (RSRQ)',
-                        data: rsrq,
+                        data: processedData.rsrq,
                         borderColor: 'rgb(255, 99, 132)',
                         backgroundColor: 'rgba(255, 99, 132, 0.1)',
                         borderWidth: 2,
                         fill: false,
-                        tension: 0.1,
-                        pointRadius: 2,
+                        tension: 0.5,
+                        pointRadius: 1,
                         yAxisID: 'y1'
                     }, {
                         label: 'Reference Receive Power (RSRP)',
-                        data: rsrp,
+                        data: processedData.rsrp,
                         borderColor: 'rgb(54, 162, 235)',
                         backgroundColor: 'rgba(54, 162, 235, 0.1)',
                         borderWidth: 2,
                         fill: false,
-                        tension: 0.1,
-                        pointRadius: 2,
+                        tension: 0.5,
+                        pointRadius: 1,
                         yAxisID: 'y1'
                     }, {
                         label: 'Reference Signal Strength (RSSI)',
-                        data: rssi,
+                        data: processedData.rssi,
                         borderColor: 'rgb(255, 205, 86)',
                         backgroundColor: 'rgba(255, 205, 86, 0.1)',
                         borderWidth: 2,
                         fill: false,
-                        tension: 0.1,
-                        pointRadius: 2,
+                        tension: 0.5,
+                        pointRadius: 1,
                         yAxisID: 'y1'
                     }, {
                         label: 'Signal to Noise Ratio (SINR)',
-                        data: sinr,
+                        data: processedData.sinr,
                         borderColor: 'rgb(153, 102, 255)',
                         backgroundColor: 'rgba(153, 102, 255, 0.1)',
                         borderWidth: 2,
                         fill: false,
-                        tension: 0.1,
-                        pointRadius: 2,
+                        tension: 0.5,
+                        pointRadius: 1,
                         yAxisID: 'y2'
                     }]
                 },
@@ -168,7 +175,7 @@
                                 title: function(tooltipItems) {
                                     // Get the raw data point
                                     const dataIndex = tooltipItems[0].dataIndex;
-                                    const rawDate = data[dataIndex].date;
+                                    const rawDate = processedData.data[dataIndex].date;
                                     const date = new Date(rawDate);
                                     return date.toLocaleString();
                                 },
@@ -269,6 +276,26 @@
             });
         }
 
+        function updateChart(data) {
+            if (!chart) {
+                console.error('Chart not initialized');
+                return;
+            }
+            
+            const processedData = processData(data);
+            
+            // Update chart data
+            chart.data.labels = processedData.dates;
+            chart.data.datasets[0].data = processedData.signalBars;
+            chart.data.datasets[1].data = processedData.rsrq;
+            chart.data.datasets[2].data = processedData.rsrp;
+            chart.data.datasets[3].data = processedData.rssi;
+            chart.data.datasets[4].data = processedData.sinr;
+            
+            // Update the chart without animation to avoid flickering
+            chart.update('none');
+        }
+
         async function init() {
             const loadingElement = document.getElementById('loading');
             const errorElement = document.getElementById('error');
@@ -292,12 +319,8 @@
                     try {
                         const newData = await loadSignalData();
                         if (newData && newData.length > 0) {
-                            // Recreate chart with new data
-                            const canvas = document.getElementById('signalChart');
-                            const newCanvas = document.createElement('canvas');
-                            newCanvas.id = 'signalChart';
-                            canvas.parentNode.replaceChild(newCanvas, canvas);
-                            createChart(newData);
+                            // Update existing chart with new data instead of recreating
+                            updateChart(newData);
                         }
                     } catch (error) {
                         console.error('Error refreshing data:', error);

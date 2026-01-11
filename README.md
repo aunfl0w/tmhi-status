@@ -8,6 +8,8 @@ A Go-based monitoring tool for T-Mobile Home Internet (TMHI) devices that collec
 - **24-Hour History**: Maintains up to 24 hours of signal metrics (1440 data points)
 - **Web Dashboard**: Interactive charts displaying signal trends over time
 - **REST API**: JSON endpoint for accessing collected data
+- **Smart Notifications**: Configurable signal threshold alerts via ntfy
+- **Notification Throttling**: 15-minute cooldown to prevent spam
 - **Graceful Shutdown**: Handles SIGINT/SIGTERM signals for clean termination
 
 ## Signal Metrics Tracked
@@ -39,19 +41,24 @@ go build -o tmhi-status .
 ### Running
 
 ```bash
-# Default port 8080
-./tmhi-status
+# Basic usage (ntfy URL is required)
+./tmhi-status -ntfy https://ntfy.sh/your-topic
 
-# Custom port
-./tmhi-status -port 3000
+# Custom port and threshold
+./tmhi-status -port 3000 -minbars 3 -ntfy https://ntfy.sh/your-topic
+
+# All options
+./tmhi-status -port 8080 -minbars 2 -ntfy https://ntfy.sh/your-topic
 ```
 
 ## Usage
 
-1. **Start the application**: Run the binary with optional port configuration
-2. **Access the dashboard**: Open `http://localhost:8080` in your browser
-3. **View real-time data**: Charts automatically refresh every 61 seconds
-4. **API access**: GET `/api/updates` for JSON data
+1. **Set up notifications**: Choose an ntfy topic URL (e.g., `https://ntfy.sh/your-unique-topic`)
+2. **Start the application**: Run the binary with required ntfy URL and optional configuration
+3. **Access the dashboard**: Open `http://localhost:8080` in your browser (or your custom port)
+4. **View real-time data**: Charts automatically refresh every 61 seconds
+5. **Monitor alerts**: Receive notifications when signal drops below threshold for 5+ consecutive readings
+6. **API access**: GET `/api/updates` for JSON data
 
 ## API Endpoints
 
@@ -90,6 +97,40 @@ Returns array of signal measurements:
 
 - `/`: Serves the web dashboard from embedded HTML files
 
+## Notification System
+
+The application includes a smart notification system that alerts you when your signal strength degrades:
+
+### Setup
+
+1. **Choose an ntfy service**: Use the public [ntfy.sh](https://ntfy.sh) or self-host
+2. **Select a topic**: Choose a unique topic name (e.g., `tmhi-signal-alerts-xyz123`)
+3. **Subscribe**: Install the ntfy app on your phone and subscribe to your topic
+4. **Configure**: Pass the full ntfy URL when starting the application
+
+```bash
+# Example with ntfy.sh
+./tmhi-status -ntfy https://ntfy.sh/tmhi-signal-alerts-xyz123
+
+# Example with custom server
+./tmhi-status -ntfy https://your-ntfy-server.com/your-topic
+```
+
+### Notification Triggers
+
+- **Threshold Monitoring**: Signal bars drop below configured minimum (default: 2 bars)
+- **Persistence Check**: Requires 5 consecutive readings below threshold
+- **Cooldown Protection**: 15-minute delay between notifications prevents spam
+- **Automatic Priority**: Higher urgency for worse signal conditions
+
+### Message Content
+
+Notifications include:
+- Current signal strength (bars)
+- Configured threshold
+- Technical metrics (RSRP, RSRQ, SINR)
+- Timestamp
+
 ## Architecture
 
 The application consists of three main components:
@@ -115,7 +156,16 @@ The application consists of three main components:
 
 ### Command Line Flags
 
-- `-port`: HTTP server port (default: 8080)
+- `-port`: Port to listen on (default: 8080)
+- `-minbars`: Minimum bars threshold for notifications (default: 2)
+- `-ntfy`: Ntfy URL for notifications (required, no default)
+
+### Notification Behavior
+
+- Notifications are sent when signal strength drops below the `-minbars` threshold
+- Requires 5 consecutive readings below threshold before triggering
+- 15-minute cooldown prevents notification spam
+- Priority levels: urgent (<2 bars), high (<3 bars), default (<4 bars), low (<5 bars)
 
 ### Environment Variables
 
@@ -144,16 +194,19 @@ GET /TMI/v1/gateway?get=signal
 
 ### Common Issues
 
-1. **Connection Refused**: Ensure TMHI gateway is accessible at `192.168.12.1`
-2. **No Data**: Check network connectivity and gateway API availability  
-3. **Port in Use**: Use `-port` flag to specify alternative port
+1. **Missing ntfy URL**: Application requires `-ntfy` flag with valid URL
+2. **Connection Refused**: Ensure TMHI gateway is accessible at `192.168.12.1`
+3. **No Data**: Check network connectivity and gateway API availability  
+4. **Port in Use**: Use `-port` flag to specify alternative port
+5. **No Notifications**: Verify ntfy URL is reachable and topic is subscribed
 
 ### Logs
 
 The application logs to stdout/stderr:
-- Startup messages with version and port
+- Startup messages with version, port, and notification settings
 - Signal updates every minute
-- Error messages for failed API calls
+- Notification send confirmations
+- Error messages for failed API calls or notification delivery
 - Graceful shutdown notification
 
 ## License
